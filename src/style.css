@@ -1,0 +1,24 @@
+body {
+    min-height: 100vh;
+}
+.board {
+   min-height: 300px;
+   min-width: 600px;
+   background-color: aqua;
+}
+
+#pointer {
+    width: 0.5em;
+    height: 0.5em;
+    border-radius: 50%;
+    background-color: red;
+    border: 4px solid #fff;
+    box-shadow: 0 0 0 5px red;
+    position: absolute;
+    top: -100px;
+    left: -100px;
+}
+
+#srcvideo {
+    display: none;
+}
