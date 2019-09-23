@@ -1,98 +1,144 @@
-import * as handTrack from 'handtrackjs';
+import * as Hammer from 'hammerjs'
+import * as HandtrackTouch from './jammer'
+
 import './style.css';
 
-const video = document.getElementById("srcvideo");
-const canvas = document.getElementById("canvas");
-const context = canvas.getContext("2d");
-const trackButton = document.getElementById("track");
-const pointer = document.getElementById("pointer");
-let updateNote = document.getElementById("updatenote");
-let log = document.getElementById("log");
+var reqAnimationFrame = (function () {
+    return (
+        window[Hammer.prefixed(window, "requestAnimationFrame")] ||
+        function (callback) {
+            setTimeout(callback, 1000 / 60);
+        }
+    );
+})();
 
-
-let isVideo = false;
-let model = null;
-let lastMidX = -100;
-let lastMidY = -100;
-
-const modelParams = {
-    flipHorizontal: true,   // flip e.g for video  
-    maxNumBoxes: 1,        // maximum number of boxes to detect
-    iouThreshold: 0.5,      // ioU threshold for non-max suppression
-    scoreThreshold: 0.6,    // confidence threshold for predictions.
+function dirProp(direction, hProp, vProp) {
+    return direction & Hammer.DIRECTION_HORIZONTAL ? hProp : vProp;
 }
 
-function startVideo() {
-    handTrack.startVideo(video).then(function (status) {
-        console.log("video started", status);
-        if (status) {
-            updateNote.innerText = "Video started. Now tracking"
-            isVideo = true
-            runDetection()
+/**
+ * Carousel
+ * @param container
+ * @param direction
+ * @constructor
+ */
+function HammerCarousel(container, direction) {
+    this.container = container;
+    this.direction = direction;
+
+    this.panes = Array.prototype.slice.call(this.container.children, 0);
+    this.containerSize = this.container[
+        dirProp(direction, "offsetWidth", "offsetHeight")
+    ];
+
+    this.currentIndex = 0;
+
+    this.hammer = new Hammer.Manager(this.container, {
+        inputClass: Hammer.TouchInput
+    });
+    this.hammer.add(new Hammer.Pan({ direction: this.direction, threshold: 10 }));
+    this.hammer.on(
+        "panstart panmove panend pancancel",
+        Hammer.bindFn(this.onPan, this)
+    );
+
+    this.show(this.currentIndex);
+}
+
+HammerCarousel.prototype = {
+    /**
+     * show a pane
+     * @param {Number} showIndex
+     * @param {Number} [percent] percentage visible
+     * @param {Boolean} [animate]
+     */
+    show: function (showIndex, percent, animate) {
+        showIndex = Math.max(0, Math.min(showIndex, this.panes.length - 1));
+        percent = percent || 0;
+
+        var className = this.container.className;
+        if (animate) {
+            if (className.indexOf("animate") === -1) {
+                this.container.className += " animate";
+            }
         } else {
-            updateNote.innerText = "Please enable video"
+            if (className.indexOf("animate") !== -1) {
+                this.container.className = className.replace("animate", "").trim();
+            }
         }
-    });
-}
 
-function toggleVideo() {
-    if (!isVideo) {
-        updateNote.innerText = "Starting video"
-        startVideo();
-    } else {
-        updateNote.innerText = "Stopping video"
-        handTrack.stopVideo(video)
-        isVideo = false;
-        updateNote.innerText = "Video stopped"
+        var paneIndex, pos, translate;
+        for (paneIndex = 0; paneIndex < this.panes.length; paneIndex++) {
+            pos =
+                (this.containerSize / 100) * ((paneIndex - showIndex) * 100 + percent);
+            if (this.direction & Hammer.DIRECTION_HORIZONTAL) {
+                translate = "translate3d(" + pos + "px, 0, 0)";
+            } else {
+                translate = "translate3d(0, " + pos + "px, 0)";
+            }
+            this.panes[paneIndex].style.transform = translate;
+            this.panes[paneIndex].style.mozTransform = translate;
+            this.panes[paneIndex].style.webkitTransform = translate;
+        }
+
+        this.currentIndex = showIndex;
+    },
+
+    /**
+     * handle pan
+     * @param {Object} ev
+     */
+    onPan: function (ev) {
+        var delta = dirProp(this.direction, ev.deltaX, ev.deltaY);
+        var percent = (100 / this.containerSize) * delta;
+        var animate = false;
+
+        if (ev.type == "panend" || ev.type == "pancancel") {
+            if (Math.abs(percent) > 20 && ev.type == "panend") {
+                this.currentIndex += percent < 0 ? 1 : -1;
+            }
+            percent = 0;
+            animate = true;
+        }
+
+        this.show(this.currentIndex, percent, animate);
     }
-}
+};
 
-trackButton.addEventListener("click", function () {
-    toggleVideo();
+// the horizontal pane scroller
+var outer = new HammerCarousel(
+    document.querySelector(".panes.wrapper"),
+    Hammer.DIRECTION_HORIZONTAL
+);
+
+// each pane should contain a vertical pane scroller
+Hammer.each(document.querySelectorAll(".pane .panes"), function (container) {
+    // setup the inner scroller
+    var inner = new HammerCarousel(container, Hammer.DIRECTION_VERTICAL);
+
+    // only recognize the inner pan when the outer is failing.
+    // they both have a threshold of some px
+    outer.hammer.get("pan").requireFailure(inner.hammer.get("pan"));
 });
 
-function moveCursor(x, y) {
-    pointer.style.position = "absolute";
-    pointer.style.left = (x - pointer.clientWidth / 2) + 'px';
-    pointer.style.top = (y - pointer.clientHeight / 2) + 'px';
+var video = document
+    .getElementById("handtrackjs")
+    .getElementsByTagName("video")[0];
+video.width = 320;
+video.height = 240;
+var canvas = document
+    .getElementById("handtrackjs")
+    .getElementsByTagName("canvas")[0];
+const context = canvas.getContext("2d");
 
-}
-
-function processPrediction(prediction) {
-    const [x, y, width, height] = prediction.bbox;
-    let midX = Math.round(x + (width / 2));
-    let screenX = Math.round(document.body.clientWidth * (midX / video.width));
-    let midY = Math.round(y + (height / 2));
-    let screenY = Math.round(document.body.clientHeight * (midY / video.height));
-    log.innerText += `score: ${Math.round(prediction.score)} (x,y): (${midX},${midY}) 
-    diff: (${lastMidX - midX},${lastMidY - midY})\n`;
-    // console.log('doc: ', document.body.clientWidth, document.body.clientHeight);
-    // console.log('vid: ', x, y, width, height);
-    // console.log('sceen: ', screenX, screenY);
-    lastMidX = midX;
-    lastMidY = midY;
-    moveCursor(screenX, screenY);
-
-}
-function runDetection() {
-    model.detect(video).then(predictions => {
-
-        model.renderPredictions(predictions, canvas, context, video);
-        console.log(predictions);
-
-        if (predictions[0]) {
-            processPrediction(predictions[0]);
-        }
-        if (isVideo) {
-            requestAnimationFrame(runDetection);
-        }
-    });
-}
-
-// Load the model.
-handTrack.load(modelParams).then(lmodel => {
-    // detect objects in the image.
-    model = lmodel
-    updateNote.innerText = "Loaded Model!"
-    trackButton.disabled = false
-});
+var options = {
+    transform: function (prediction, video, target) {
+        return {
+            x: ((prediction.bbox[0] + 0.5 * prediction.bbox[2]) / video.width) * 1920,
+            y:
+                ((prediction.bbox[1] + 0.5 * prediction.bbox[3]) / video.height) * 1200,
+            target: target
+        };
+    }
+};
+HandtrackTouch.start(outer.container, video, canvas, options);
