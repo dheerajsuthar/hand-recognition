@@ -1,4 +1,6 @@
 const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin')
+
 
 module.exports = {
     entry: './src/index.js',
@@ -11,6 +13,11 @@ module.exports = {
     devServer: {
         contentBase: './dist'
     },
+    plugins: [
+        new CopyPlugin([
+            { from: 'ssdlitemobilenetv2', to: 'ssdlitemobilenetv2' },
+            { from: 'src/index.html', to: 'index.html' }])
+    ],
     module: {
         rules: [
             {
