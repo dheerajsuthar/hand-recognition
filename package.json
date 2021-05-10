@@ -24,7 +24,7 @@
   "homepage": "https://github.com/dheerajsuthar/hand-recognition#readme",
   "dependencies": {
     "handtrackjs": "0.0.13",
-    "lodash": "^4.17.15"
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "copy-webpack-plugin": "^5.0.4",
